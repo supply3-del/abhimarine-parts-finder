@@ -8,8 +8,14 @@ sample quotes/
 confidance_level/*.xlsx
 abhimarine_parts_finder/data/
 
-# Built from the inventory spreadsheets by build_db.py — regenerate, don't ship
+# Built from the inventory spreadsheets by build_db.py.
+# The app's own copy IS committed: Streamlit Cloud clones this repo and has no
+# way to run build_db.py against the (unpublished) spreadsheets, so without the
+# database the deployed app connects to an empty file and dies with
+# "no such table: parts". Safe only while this repo stays PRIVATE — it contains
+# real stock levels and rack locations.
 parts.db
+!abhimarine_parts_finder/parts.db
 
 # --- secrets ---
 .streamlit/secrets.toml
