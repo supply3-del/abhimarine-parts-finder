@@ -14,9 +14,11 @@ ratings**, and export any model group's full spares list to **Excel or PDF**.
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 
 # 2. install dependencies
+cd abhimarine_parts_finder
 pip install -r requirements.txt
 
-# 3. build the database from the Excel files in ./data  (already done once for you)
+# 3. build the database from the Excel files in ./data
+#    (the inventory spreadsheets are not in this repo — supply your own)
 python build_db.py
 
 # 4. run the app
