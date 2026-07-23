@@ -1,0 +1,25 @@
+# --- commercial data: never publish ---
+# Real inventory (part locations, racks, stock levels), customer requisitions
+# (contact names, emails, phone numbers, vessel names/IMO) and quotations
+# (pricing). The app is reproducible from these; the data itself is not public.
+inventory/
+sample inquiries/
+sample quotes/
+confidance_level/*.xlsx
+abhimarine_parts_finder/data/
+
+# Built from the inventory spreadsheets by build_db.py — regenerate, don't ship
+parts.db
+
+# --- secrets ---
+.streamlit/secrets.toml
+**/.streamlit/secrets.toml
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# local machine permissions, not shared
+.claude/settings.local.json
