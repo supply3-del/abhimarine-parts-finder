@@ -56,15 +56,3 @@ markings, genuinity, a photo, key specs. More complete listings rank higher in
 search results.
 
 ---
-
-## Team features
-
-- **Login** — a shared team password gates the app. Default is `abhimarine`;
-  change it by copying `.streamlit/secrets.toml.example` to
-  `.streamlit/secrets.toml` and setting `TEAM_PASSWORD`. "Sign out" is top-right.
-- **Enquiry → Quote shortlist** — hit ➕ on any search result to add it to the
-  **Enquiry / Quote** tab. Set the *qty needed* per line, then export a
-  quote-ready **Excel** or **PDF**, or share the list straight to **WhatsApp**
-  or **Email**.
-- **Fuzzy search** — if an exact search returns nothing, the app automatically
-  falls back to closest matches, so typos like "plumger" still find *Plunger*.
