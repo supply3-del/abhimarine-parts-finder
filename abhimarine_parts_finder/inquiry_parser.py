@@ -711,19 +711,39 @@ def parse_image(data: bytes) -> pd.DataFrame:
 
 # ------------------------------------------------ legacy .doc without MS Word
 def _parse_doc_text(text: str) -> pd.DataFrame:
-    """Parse the plain text of a .doc into rows — a space-delimited grid and the
-    positional text-layout parsers, best result wins — then stamp the header
-    maker/model onto any row that didn't carry its own."""
-    header = _word_header_equipment(text)
-    lines = [l for l in (text or "").splitlines() if l.strip()]
-    grid = [re.split(r"\s{2,}", l.strip()) for l in lines]
+    """Parse the plain text of a .doc into rows, then stamp the header maker/model
+    onto any row that didn't carry its own. antiword renders tables with '|'
+    column borders (and '+---+' rules); a plain layout has neither, so split on
+    whichever the document actually uses."""
+    raw = text or ""
+    # keep only real content lines — drop the +---+---+ border rules
+    lines = [l for l in raw.splitlines() if l.strip() and (set(l.strip()) - set("+-=| "))]
+    pipe_lines = sum(1 for l in lines if l.count("|") >= 2)
+    use_pipes = pipe_lines >= max(2, len(lines) // 3)
+    grid = []
+    for l in lines:
+        if use_pipes:
+            cells = [c.strip() for c in l.split("|")]
+            # drop only the empty edge cells the border '|' produces — keep any
+            # blank middle cell so the columns stay aligned (e.g. a row with no
+            # part number must not shift Qty into the part-number column)
+            if cells and cells[0] == "":
+                cells = cells[1:]
+            if cells and cells and cells[-1] == "":
+                cells = cells[:-1]
+        else:
+            cells = [c.strip() for c in re.split(r"\s{2,}", l.strip()) if c.strip()]
+        if cells:
+            grid.append(cells)
     df_grid = pd.DataFrame(columns=CANON_COLS)
     if grid:
         ncols = max(len(r) for r in grid)
         grid = [r + [""] * (ncols - len(r)) for r in grid]
         if ncols >= 2:
             df_grid = _grid_to_canonical(grid)
-    out = best_parse(df_grid, parse_text_layout(text))
+    depiped = re.sub(r"\|+", " ", raw)   # so an 'M/E ...' header isn't cut by borders
+    header = _word_header_equipment(depiped)
+    out = best_parse(df_grid, parse_text_layout(depiped))
     if header and not out.empty:
         for col in ("brand", "model"):
             blank = out[col].fillna("").astype(str).str.strip() == ""
@@ -801,17 +821,21 @@ if __name__ == "__main__":
     assert (df["brand"] == "WEICHAI 170Z SERIES").all()
     assert (df["model"] == "WEICHAI X6170ZC").all()
 
-    # legacy .doc read as plain text (what antiword emits on the Linux Cloud host):
-    # space-delimited columns + an 'M/E <maker> <model>' engine header
-    doc_text = ("M/V : MED SEA   M/E MAK  6M 551AK  SN:55346\n"
-                "No   Description       Part No     Qty   Unit\n"
-                "01   INTEK VALVE       7.2210-2    2     PCS\n"
-                "02   EXHUST VALVE      7.2210-2    4     PCS\n"
-                "03   VALVE SEAT RING   7.2220-5    6     PCS\n")
+    # legacy .doc read as pipe-bordered tables — exactly what antiword emits on
+    # the Linux Cloud host — with an 'M/E <maker> <model>' engine header
+    doc_text = (
+        "| M/V : MED SEA   M/E MAK  6M 551AK  SN:55346 |\n"
+        "+------+-------------------+------------+---------+------+------+\n"
+        "| No   | Description       | Part No    | Request | Qty  | Unit |\n"
+        "+------+-------------------+------------+---------+------+------+\n"
+        "| 01   | INTEK VALVE       | 7.2210-2   | 1.0.2   | 2    | PCS  |\n"
+        "| 02   | EXHUST VALVE      | 7.2210-2   | 1.0.2   | 4    | PCS  |\n"
+        "| 03   | VALVE SEAT RING   | 7.2220-5   | 1.0.5   | 6    | PCS  |\n"
+        "+------+-------------------+------------+---------+------+------+\n")
     dt = _parse_doc_text(doc_text)
     assert len(dt) == 3, dt
     assert list(dt["part_number"]) == ["7.2210-2", "7.2210-2", "7.2220-5"], list(dt["part_number"])
-    assert list(dt["qty"]) == [2, 4, 6], list(dt["qty"])
+    assert list(dt["qty"]) == [2, 4, 6], list(dt["qty"])          # Qty column, not all 1s
     assert (dt["brand"] == "MAK 6M 551AK").all(), list(dt["brand"])   # header stamped on every row
     # no antiword binary installed -> empty, so the caller falls back
     import shutil as _sh
