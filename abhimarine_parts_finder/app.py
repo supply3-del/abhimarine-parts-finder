@@ -245,6 +245,15 @@ def best_match_preview(part_number, description, brand, model, cust_group):
 
 
 def add_confidence_and_qty_match(grid):
+    # An empty grid (e.g. a file that parsed to zero rows — a .doc uploaded on a
+    # Linux host where the Word/COM reader can't run) makes grid.apply return a
+    # frame with no columns, so preview["confidence"] KeyErrors. Add the columns
+    # empty and return.
+    if grid.empty:
+        grid["confidence"] = pd.Series(dtype="float64")
+        grid["qty_match"] = pd.Series(dtype="object")
+        return grid
+
     def _preview(r):
         cust_group = model_group_code(get_con(), r.get("model", ""))
         return best_match_preview(r["part_number"], r["description"],
