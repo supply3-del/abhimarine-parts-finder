@@ -709,6 +709,46 @@ def parse_image(data: bytes) -> pd.DataFrame:
     return _grid_to_canonical_by_content(grid)
 
 
+# ------------------------------------------------ legacy .doc without MS Word
+def _parse_doc_text(text: str) -> pd.DataFrame:
+    """Parse the plain text of a .doc into rows — a space-delimited grid and the
+    positional text-layout parsers, best result wins — then stamp the header
+    maker/model onto any row that didn't carry its own."""
+    header = _word_header_equipment(text)
+    lines = [l for l in (text or "").splitlines() if l.strip()]
+    grid = [re.split(r"\s{2,}", l.strip()) for l in lines]
+    df_grid = pd.DataFrame(columns=CANON_COLS)
+    if grid:
+        ncols = max(len(r) for r in grid)
+        grid = [r + [""] * (ncols - len(r)) for r in grid]
+        if ncols >= 2:
+            df_grid = _grid_to_canonical(grid)
+    out = best_parse(df_grid, parse_text_layout(text))
+    if header and not out.empty:
+        for col in ("brand", "model"):
+            blank = out[col].fillna("").astype(str).str.strip() == ""
+            out.loc[blank, col] = header
+    return out
+
+
+def _parse_doc_antiword(path: str) -> pd.DataFrame:
+    """Linux fallback for legacy binary .doc when MS Word/COM isn't available
+    (e.g. Streamlit Cloud): shell out to antiword — a tiny apt package listed in
+    packages.txt — for the document text, then parse it. Returns empty if
+    antiword isn't installed, so the caller can fall back further."""
+    import shutil
+    import subprocess
+    exe = shutil.which("antiword")
+    if not exe:
+        return pd.DataFrame(columns=CANON_COLS)
+    try:
+        res = subprocess.run([exe, "-w", "0", path], capture_output=True, timeout=30)
+        text = res.stdout.decode("utf-8", "replace")
+    except Exception:
+        return pd.DataFrame(columns=CANON_COLS)
+    return _parse_doc_text(text)
+
+
 # ----------------------------------------------------------------- dispatch
 def parse_inquiry(filename: str, data: bytes) -> pd.DataFrame:
     ext = filename.lower().rsplit(".", 1)[-1]
@@ -722,14 +762,19 @@ def parse_inquiry(filename: str, data: bytes) -> pd.DataFrame:
             f.write(data)
             tmp_path = f.name
         try:
-            return parse_word(tmp_path)
-        except Exception:
-            # Word/COM unavailable (not installed, or license expired) — for a
-            # binary .doc, fall back to the Word-free reader. .docx is a zip and
-            # can't be read this way, so re-raise there.
+            try:
+                df = parse_word(tmp_path)        # MS Word COM (Windows)
+            except Exception:
+                df = pd.DataFrame(columns=CANON_COLS)
+            if not df.empty:
+                return df
+            # Word/COM gave nothing (not installed / Linux host). For a binary
+            # .doc, try antiword, then the pure-Python byte reader. .docx is a
+            # zip the byte reader can't touch, so it just returns what we have.
             if ext == "doc":
-                return parse_doc(data)
-            raise
+                aw = _parse_doc_antiword(tmp_path)
+                return aw if not aw.empty else parse_doc(data)
+            return df
         finally:
             os.unlink(tmp_path)
     if ext == "pdf":
@@ -755,6 +800,23 @@ if __name__ == "__main__":
     assert list(df["qty"]) == [30, 80], list(df["qty"])
     assert (df["brand"] == "WEICHAI 170Z SERIES").all()
     assert (df["model"] == "WEICHAI X6170ZC").all()
+
+    # legacy .doc read as plain text (what antiword emits on the Linux Cloud host):
+    # space-delimited columns + an 'M/E <maker> <model>' engine header
+    doc_text = ("M/V : MED SEA   M/E MAK  6M 551AK  SN:55346\n"
+                "No   Description       Part No     Qty   Unit\n"
+                "01   INTEK VALVE       7.2210-2    2     PCS\n"
+                "02   EXHUST VALVE      7.2210-2    4     PCS\n"
+                "03   VALVE SEAT RING   7.2220-5    6     PCS\n")
+    dt = _parse_doc_text(doc_text)
+    assert len(dt) == 3, dt
+    assert list(dt["part_number"]) == ["7.2210-2", "7.2210-2", "7.2220-5"], list(dt["part_number"])
+    assert list(dt["qty"]) == [2, 4, 6], list(dt["qty"])
+    assert (dt["brand"] == "MAK 6M 551AK").all(), list(dt["brand"])   # header stamped on every row
+    # no antiword binary installed -> empty, so the caller falls back
+    import shutil as _sh
+    if _sh.which("antiword") is None:
+        assert _parse_doc_antiword("nonexistent.doc").empty
 
     # free-text email/chat paste: no table, just prose lines + scattered label:value
     email = """We kindly invite your good company to send your quotation for the below request.
