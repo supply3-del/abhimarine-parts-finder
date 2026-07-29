@@ -47,13 +47,19 @@ never presented as a score.
 | Tier | Conditions (ALL must hold unless noted) |
 |---|---|
 | **CL5** | `brand` exact **AND** `model` exact **AND** `part_number` exact |
-| **CL4** | `part_number` exact-or-stripped-match |
+| **CL4** | `part_number` exact-or-stripped-match — **OR** model group code (col F) matches the customer's group **AND** `part_number` substring-or-stripped-match |
 | **CL3** | model/group **AND** `part_number` substring-or-stripped-match **AND** part name |
 | **CL2.5** | *Only when customer gave no part number:* model/group **AND** part name |
 | *(none)* | `NaN` — listed last, blank cell |
 
 "model/group" and "part name" above are the `_model_or_group_ok` and
-`_part_name_ok` definitions from the vocabulary section.
+`_part_name_ok` definitions from the vocabulary section; the CL4 group-code
+match is `_group_ok` (inventory col F vs the customer's model group).
+
+The CL4 extra path (added per request) means a looser part-number match earns
+4★ when the inventory row's model group code lines up with the customer's
+engine group — so the same part number in the wrong engine group does **not**
+reach 4★, but in the right group it does even without a part-name match.
 
 ## Output-field guidance (separate from confidence logic)
 

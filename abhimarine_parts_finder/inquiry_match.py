@@ -291,6 +291,11 @@ def _model_or_group_ok(cand, cust_model, cust_group) -> bool:
                for q in (cust_model, cust_group))
 
 
+def _group_ok(cand, cust_group) -> bool:
+    """Inventory model group code (col F) matches the customer's model group."""
+    return _bidir_substr(cand["group_code"], cust_group)
+
+
 # Tiers as specified in confidance_level/Copy of CL sorter -1.xlsx
 # (sheet inv-column-CLmap) — see confidance_level/CONFIDENCE_LEVEL_RULES.md
 # for the human-readable write-up. Checked strongest-first.
@@ -306,6 +311,11 @@ def confidence_level(cand, cust_part_number: str, cust_brand: str, cust_model: s
     if _exact(cand["brand"], cust_brand) and _exact(cand["model"], cust_model) and _exact(pn_c, pn_q):
         return 5.0
     if _pn_exact_or_stripped(pn_c, pn_q):
+        return 4.0
+    # CL4 (extra path, per request): a looser part-number match (substring or
+    # stripped) still earns 4★ when the inventory model group code matches the
+    # customer's model group — the right engine group backs up the weaker PN hit.
+    if _group_ok(cand, cust_group) and _pn_substr_or_stripped(pn_c, pn_q):
         return 4.0
     model_grp_bidir = _model_or_group_ok(cand, cust_model, cust_group)
     pname_bidir = _part_name_ok(cand, cust_description)
@@ -346,21 +356,31 @@ if __name__ == "__main__":
     assert confidence_level(cand, "773627-14*95", "", "L20", "", "L20+") == 4.0
     assert confidence_level(cand, "773627-14*95", "", "", "", "") == 4.0
 
-    # ---- CL3: model/group AND part number AND part name must ALL hold ----
+    # ---- CL4 extra path: group code match backs a looser part-number match ----
+    # group matches (L20+) + PN substring -> 4★ even though the part name is wrong
+    assert confidence_level(cand, "627-7*95", "", "", "Snorkel", "L20+") == 4.0
+    # group matches + PN substring, was CL3 before this path existed -> now 4★
+    assert confidence_level(cand, "627-7*95", "", "", "Cylinder", "L20+") == 4.0
+    # no group match -> the extra path can't fire (wrong engine group)
+    assert isnan(confidence_level({**cand, "model": "ZZ9", "group_code": "X99+"},
+                                 "627-7*95", "", "", "Snorkel", "L20+"))
+
+    # ---- CL3: model/group AND part number AND part name, no group-code match ----
     assert confidence_level(cand, "627-7*95", "", "L20", "Cylinder", "") == 3.0
-    # model matched via the group code on either side
-    assert confidence_level(cand, "627-7*95", "", "", "Cylinder", "L20+") == 3.0
     # part number alone is no longer enough — wrong model drops it out of CL3
     assert isnan(confidence_level({**cand, "model": "9L70", "group_code": "L70+"},
                                  "627-7*95", "", "", "", ""))
-    # right model + part number but wrong part name -> no tier
+    # right model + part number but wrong part name and no group code -> no tier
     assert isnan(confidence_level(cand, "627-7*95", "", "L20", "Snorkel", ""))
     # column L (Standard_Part_Name) satisfies the part-name leg on its own
     gasket = {"part_number": "90904-29-0169", "part_name": "No Name",
              "std_part_name": "Gasket", "brand": "MAN B&W",
              "model": "S50MC", "group_code": "50MC+"}
     assert confidence_level(gasket, "90904-0029-0169", "", "S50MC", "Gasket", "50MC+") == 4.0
-    assert confidence_level(gasket, "904-29-0169", "", "S50MC", "Gasket", "50MC+") == 3.0
+    # group 50MC+ matches + PN substring -> 4★ via the extra path (was 3★)
+    assert confidence_level(gasket, "904-29-0169", "", "S50MC", "Gasket", "50MC+") == 4.0
+    # PN substring but no group given -> stays CL3 (needs part name, which holds)
+    assert confidence_level(gasket, "904-29-0169", "", "S50MC", "Gasket", "") == 3.0
 
     # CL2.5: no customer part number, model/group + part name bidirectional substring
     assert confidence_level(cand, "", "", "L20", "Liner", "") == 2.5
