@@ -47,21 +47,21 @@ never presented as a score.
 | Tier | Conditions (ALL must hold unless noted) |
 |---|---|
 | **CL5** | `brand` exact **AND** `model` exact **AND** `part_number` exact |
-| **CL4** | `part_number` substring-or-stripped-match **AND** model group code (col F) matches the customer's group — **OR** an exact/stripped `part_number` when the customer named **no** group |
-| **CL3** | exact/stripped `part_number` in a **different** group than the customer's — **OR** model/group **AND** `part_number` substring-or-stripped-match **AND** part name |
+| **CL4** | `part_number` substring-or-stripped-match **AND** model/group matches (`_model_or_group_ok`) |
+| **CL3** | exact/stripped `part_number` but model/group does **not** match (or wasn't given) |
 | **CL2.5** | *Only when customer gave no part number:* model/group **AND** part name |
 | *(none)* | `NaN` — listed last, blank cell |
 
-"model/group" and "part name" above are the `_model_or_group_ok` and
-`_part_name_ok` definitions from the vocabulary section; the CL4/CL3 group-code
-match is `_group_ok` (inventory col F vs the customer's model group).
+"model/group" is `_model_or_group_ok`: the customer's model **or** model group
+matched against inventory col G (Model) **or** col F (Model Group Code).
 
-**4★ requires the right engine group.** A part-number match earns 4★ only when
-the inventory row's model group code lines up with the customer's engine group
-(or the customer named no group to check). The **same part number in a
-different engine group scores 3★, not 4★** — right part number, wrong engine.
-Example: customer MAK 551AK (group 551+); part `7.1130-33` in group 551+ → 4★,
-the identical part number in group 453+ → 3★.
+**4★ requires the part number AND the model or model group.** A part-number
+match alone never reaches 4★ — the model or the model group must also line up.
+The **same part number in a different engine group (or with no model/group
+given) scores 3★, not 4★** — right part number, wrong or unstated engine.
+Part name is **not** required for 4★. Example: customer MAK 551AK (group 551+);
+part `7.1130-33` in group 551+ → 4★; the identical part number in group 453+,
+or with no model/group supplied → 3★.
 
 ## Output-field guidance (separate from confidence logic)
 

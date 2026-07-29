@@ -291,11 +291,6 @@ def _model_or_group_ok(cand, cust_model, cust_group) -> bool:
                for q in (cust_model, cust_group))
 
 
-def _group_ok(cand, cust_group) -> bool:
-    """Inventory model group code (col F) matches the customer's model group."""
-    return _bidir_substr(cand["group_code"], cust_group)
-
-
 # Tiers as specified in confidance_level/Copy of CL sorter -1.xlsx
 # (sheet inv-column-CLmap) — see confidance_level/CONFIDENCE_LEVEL_RULES.md
 # for the human-readable write-up. Checked strongest-first.
@@ -309,28 +304,22 @@ def confidence_level(cand, cust_part_number: str, cust_brand: str, cust_model: s
     pn_c, pn_q = cand["part_number"], cust_part_number
     pn_strong = _pn_exact_or_stripped(pn_c, pn_q)   # exact or MAN B&W-stripped
     pn_any = _pn_substr_or_stripped(pn_c, pn_q)      # + substring
-    grp_match = _group_ok(cand, cust_group)          # inventory col F == customer group
-    grp_given = bool(_norm(cust_group))
+    mg_match = _model_or_group_ok(cand, cust_model, cust_group)   # model OR group
+    pname = _part_name_ok(cand, cust_description)
 
     if _exact(cand["brand"], cust_brand) and _exact(cand["model"], cust_model) and _exact(pn_c, pn_q):
         return 5.0
-    # CL4: a part-number match confirmed by the right engine group — or a strong
-    # (exact/stripped) part number when the customer named no group to check against.
-    if pn_any and grp_match:
+    # CL4: a part-number match AND the model or model group lines up. A part
+    # number that matches but neither the model nor the group does never reaches
+    # 4★ (per request) — it drops to CL3 below.
+    if pn_any and mg_match:
         return 4.0
-    if pn_strong and not grp_given:
-        return 4.0
-    # CL3 (per request): an exact/stripped part number that lands in a DIFFERENT
-    # engine group than the customer's — right part number, wrong engine, so 3★.
-    if pn_strong and grp_given and not grp_match:
+    # CL3: a strong (exact/stripped) part number whose model/group does NOT match
+    # the customer's — right part number, wrong or unstated engine.
+    if pn_strong and not mg_match:
         return 3.0
-    model_grp_bidir = _model_or_group_ok(cand, cust_model, cust_group)
-    pname_bidir = _part_name_ok(cand, cust_description)
-    # CL3 (classic): model/group AND part number AND part name must all line up.
-    if model_grp_bidir and pn_any and pname_bidir:
-        return 3.0
-    # CL2.5: only when the customer gave no part number at all.
-    if not pn_q and model_grp_bidir and pname_bidir:
+    # CL2.5: no customer part number, but model/group and part name line up.
+    if not pn_q and mg_match and pname:
         return 2.5
     return float("nan")
 
@@ -359,40 +348,34 @@ if __name__ == "__main__":
 
     # CL5: brand + model + part number all exact
     assert confidence_level(cand, "773627-7*95", "MAN B&W", "L20", "Cylinder Liner", "L20+") == 5.0
-    # CL4 (merged 4/4.1): part number exact-or-stripped-match, regardless of brand/model
-    assert confidence_level(cand, "773627-14*95", "", "L20", "", "L20+") == 4.0
-    assert confidence_level(cand, "773627-14*95", "", "", "", "") == 4.0
 
-    # ---- CL4 needs the right engine group; a strong PN with no group also ok ----
-    # group matches (L20+) + PN substring -> 4★ even though the part name is wrong
-    assert confidence_level(cand, "627-7*95", "", "", "Snorkel", "L20+") == 4.0
-    assert confidence_level(cand, "627-7*95", "", "", "Cylinder", "L20+") == 4.0
-    # exact PN, RIGHT group -> 4★
-    assert confidence_level(cand, "773627-7*95", "", "", "", "L20+") == 4.0
-    # exact / stripped PN but the WRONG engine group -> 3★, not 4★ (per request)
+    # ---- CL4: part number match AND (model OR model group) matches ----
+    # exact/stripped/substring PN, with the model or group lined up -> 4★
+    assert confidence_level(cand, "773627-14*95", "", "L20", "", "L20+") == 4.0     # stripped + model
+    assert confidence_level(cand, "773627-7*95", "", "", "", "L20+") == 4.0         # exact + group
+    assert confidence_level(cand, "627-7*95", "", "", "Cylinder", "L20+") == 4.0    # substring + group
+    assert confidence_level(cand, "627-7*95", "", "L20", "Snorkel", "") == 4.0      # substring + model, name irrelevant
+
+    # ---- CL3: strong part number but neither model nor group matches ----
+    # exact / stripped PN with NO model or group match -> 3★, not 4★ (per request)
+    assert confidence_level(cand, "773627-14*95", "", "", "", "") == 3.0            # no model/group given
     off = {**cand, "model": "9L70", "group_code": "L70+"}
-    assert confidence_level(off, "773627-7*95", "", "", "", "L20+") == 3.0
-    assert confidence_level(off, "773627-14*95", "", "", "", "L20+") == 3.0
-    # substring PN in the wrong group with no part-name match -> no tier
+    assert confidence_level(off, "773627-7*95", "", "", "", "L20+") == 3.0          # exact PN, wrong group
+    assert confidence_level(off, "773627-14*95", "", "", "", "L20+") == 3.0         # stripped PN, wrong group
+    # a mere substring PN with no model/group match is too weak -> no tier
     assert isnan(confidence_level({**cand, "model": "ZZ9", "group_code": "X99+"},
                                  "627-7*95", "", "", "Snorkel", "L20+"))
-
-    # ---- CL3: model/group AND part number AND part name, no group-code match ----
-    assert confidence_level(cand, "627-7*95", "", "L20", "Cylinder", "") == 3.0
-    # part number alone is no longer enough — wrong model drops it out of CL3
     assert isnan(confidence_level({**cand, "model": "9L70", "group_code": "L70+"},
                                  "627-7*95", "", "", "", ""))
-    # right model + part number but wrong part name and no group code -> no tier
-    assert isnan(confidence_level(cand, "627-7*95", "", "L20", "Snorkel", ""))
-    # column L (Standard_Part_Name) satisfies the part-name leg on its own
+
+    # gasket: column L (Standard_Part_Name) is available but part name is not
+    # required for CL4 — a PN match plus the model/group is enough
     gasket = {"part_number": "90904-29-0169", "part_name": "No Name",
              "std_part_name": "Gasket", "brand": "MAN B&W",
              "model": "S50MC", "group_code": "50MC+"}
-    assert confidence_level(gasket, "90904-0029-0169", "", "S50MC", "Gasket", "50MC+") == 4.0
-    # group 50MC+ matches + PN substring -> 4★ via the extra path (was 3★)
-    assert confidence_level(gasket, "904-29-0169", "", "S50MC", "Gasket", "50MC+") == 4.0
-    # PN substring but no group given -> stays CL3 (needs part name, which holds)
-    assert confidence_level(gasket, "904-29-0169", "", "S50MC", "Gasket", "") == 3.0
+    assert confidence_level(gasket, "90904-0029-0169", "", "S50MC", "Gasket", "50MC+") == 4.0  # stripped + group
+    assert confidence_level(gasket, "904-29-0169", "", "S50MC", "Gasket", "50MC+") == 4.0      # substring + group
+    assert confidence_level(gasket, "904-29-0169", "", "S50MC", "Gasket", "") == 4.0           # substring + model
 
     # CL2.5: no customer part number, model/group + part name bidirectional substring
     assert confidence_level(cand, "", "", "L20", "Liner", "") == 2.5
