@@ -477,12 +477,17 @@ def _word_header_equipment(text: str) -> str:
     """Maker+model descriptor from a ship requisition header — either the labelled
     form ('Maker:'/'Model:') or the 'M/E <maker> <model> SN:...' engine line. The
     raw descriptor is returned; annotate_brand_model normalises it to inventory."""
-    lines = [l for l in re.split(r"[\r\n]+", text or "") if l.strip()]
+    # Drop the vessel's IMO number ('IMO NO: 7633387') first — 'IMO' is also a
+    # real pump brand, so the number must not be read as the maker.
+    strip_imo = lambda s: re.sub(r"\bIMO\b\s*(?:NO\.?|NUMBER)?\s*[:.\-]?\s*\d+", " ", s, flags=re.I)
+    lines = [strip_imo(l) for l in re.split(r"[\r\n]+", text or "") if l.strip()]
     b, m = _labelled_equipment(lines)
     if b or m:
         return (b + " " + m).strip()
-    hit = _ENGINE_HDR_RE.search(text or "")
-    return re.sub(r"\s+", " ", hit.group(1)).strip() if hit else ""
+    # collapse whitespace so a maker/model split across antiword table cells
+    # (separate lines) reads as one contiguous 'M/E MAK 6M 551AK'
+    hit = _ENGINE_HDR_RE.search(strip_imo(re.sub(r"\s+", " ", text or "")))
+    return hit.group(1).strip() if hit else ""
 
 
 def parse_word(path: str) -> pd.DataFrame:
@@ -837,6 +842,11 @@ if __name__ == "__main__":
     assert list(dt["part_number"]) == ["7.2210-2", "7.2210-2", "7.2220-5"], list(dt["part_number"])
     assert list(dt["qty"]) == [2, 4, 6], list(dt["qty"])          # Qty column, not all 1s
     assert (dt["brand"] == "MAK 6M 551AK").all(), list(dt["brand"])   # header stamped on every row
+
+    # the vessel 'IMO NO' must not be read as the maker ('IMO' is a pump brand),
+    # and a maker/model split across antiword lines must still read as one string
+    hdr = "M/V : MED SEA\nIMO NO: 7633387\nDate: 08/07/2026\nM/E\nMAK  6M 551AK\nSN:55346"
+    assert _word_header_equipment(hdr) == "MAK 6M 551AK", _word_header_equipment(hdr)
     # no antiword binary installed -> empty, so the caller falls back
     import shutil as _sh
     if _sh.which("antiword") is None:
