@@ -48,8 +48,8 @@ never presented as a score.
 |---|---|
 | **CL5** | `brand` exact **AND** `model` exact **AND** `part_number` exact |
 | **CL4** | `part_number` substring-or-stripped-match **AND** model/group matches (`_model_or_group_ok`) |
-| **CL3** | exact/stripped `part_number` but model/group does **not** match (or wasn't given) |
 | **CL2.5** | *Only when customer gave no part number:* model/group **AND** part name |
+| **CL2** | exact/stripped `part_number` but model/group does **not** match (or wasn't given) |
 | *(none)* | `NaN` — listed last, blank cell |
 
 "model/group" is `_model_or_group_ok`: the customer's model **or** model group
@@ -58,10 +58,10 @@ matched against inventory col G (Model) **or** col F (Model Group Code).
 **4★ requires the part number AND the model or model group.** A part-number
 match alone never reaches 4★ — the model or the model group must also line up.
 The **same part number in a different engine group (or with no model/group
-given) scores 3★, not 4★** — right part number, wrong or unstated engine.
+given) scores 2★, not 4★** — right part number, wrong or unstated engine.
 Part name is **not** required for 4★. Example: customer MAK 551AK (group 551+);
 part `7.1130-33` in group 551+ → 4★; the identical part number in group 453+,
-or with no model/group supplied → 3★.
+or with no model/group supplied → 2★.
 
 ## Output-field guidance (separate from confidence logic)
 

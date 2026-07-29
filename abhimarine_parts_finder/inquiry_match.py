@@ -314,10 +314,10 @@ def confidence_level(cand, cust_part_number: str, cust_brand: str, cust_model: s
     # 4★ (per request) — it drops to CL3 below.
     if pn_any and mg_match:
         return 4.0
-    # CL3: a strong (exact/stripped) part number whose model/group does NOT match
-    # the customer's — right part number, wrong or unstated engine.
+    # CL2: a strong (exact/stripped) part number whose model/group does NOT match
+    # the customer's — right part number, wrong or unstated engine (per request).
     if pn_strong and not mg_match:
-        return 3.0
+        return 2.0
     # CL2.5: no customer part number, but model/group and part name line up.
     if not pn_q and mg_match and pname:
         return 2.5
@@ -356,12 +356,12 @@ if __name__ == "__main__":
     assert confidence_level(cand, "627-7*95", "", "", "Cylinder", "L20+") == 4.0    # substring + group
     assert confidence_level(cand, "627-7*95", "", "L20", "Snorkel", "") == 4.0      # substring + model, name irrelevant
 
-    # ---- CL3: strong part number but neither model nor group matches ----
-    # exact / stripped PN with NO model or group match -> 3★, not 4★ (per request)
-    assert confidence_level(cand, "773627-14*95", "", "", "", "") == 3.0            # no model/group given
+    # ---- CL2: strong part number but neither model nor group matches ----
+    # exact / stripped PN with NO model or group match -> 2★, not 4★ (per request)
+    assert confidence_level(cand, "773627-14*95", "", "", "", "") == 2.0            # no model/group given
     off = {**cand, "model": "9L70", "group_code": "L70+"}
-    assert confidence_level(off, "773627-7*95", "", "", "", "L20+") == 3.0          # exact PN, wrong group
-    assert confidence_level(off, "773627-14*95", "", "", "", "L20+") == 3.0         # stripped PN, wrong group
+    assert confidence_level(off, "773627-7*95", "", "", "", "L20+") == 2.0          # exact PN, wrong group
+    assert confidence_level(off, "773627-14*95", "", "", "", "L20+") == 2.0         # stripped PN, wrong group
     # a mere substring PN with no model/group match is too weak -> no tier
     assert isnan(confidence_level({**cand, "model": "ZZ9", "group_code": "X99+"},
                                  "627-7*95", "", "", "Snorkel", "L20+"))
