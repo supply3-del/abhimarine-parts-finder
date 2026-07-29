@@ -13,19 +13,31 @@ ratings**, and export any model group's full spares list to **Excel or PDF**.
 # 1. (optional) create a virtual environment
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 
-# 2. install dependencies
-cd abhimarine_parts_finder
+# 2. install dependencies (requirements.txt lives at the repo root)
 pip install -r requirements.txt
 
-# 3. build the database from the Excel files in ./data
+# 3. build the database from the Excel files in abhimarine_parts_finder/data
 #    (the inventory spreadsheets are not in this repo — supply your own)
-python build_db.py
+python abhimarine_parts_finder/build_db.py
 
 # 4. run the app
-streamlit run app.py
+streamlit run abhimarine_parts_finder/app.py
 ```
 
 The app opens at <http://localhost:8501>.
+
+---
+
+## Deploying on Streamlit Community Cloud
+
+- **Main file path:** `abhimarine_parts_finder/app.py`
+- **requirements.txt** and **packages.txt** must sit at the repo root (they do) —
+  Cloud installs Python deps from the former and the `tesseract-ocr` system
+  package (for scanned-PDF / image OCR) from the latter.
+- The repo is **private**, so Streamlit needs GitHub access to it: authorize the
+  Streamlit app for private repositories in your GitHub settings.
+- `.doc` parsing uses MS Word COM automation, which only works on Windows — on
+  the Linux Cloud host, upload `.docx`/PDF/Excel instead.
 
 ---
 
