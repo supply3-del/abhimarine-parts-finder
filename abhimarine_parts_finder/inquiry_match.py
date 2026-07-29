@@ -7,8 +7,8 @@ import re
 
 import pandas as pd
 
-PARTS_COLS = ("row_id, part_name, std_part_name, brand, model, group_code, condition, qty, unit, "
-             "location, rack, part_number, stars, available")
+PARTS_COLS = ("row_id, sr, part_name, std_part_name, brand, model, group_code, condition, qty, unit, "
+             "location, rack, part_number, photo, stars, available")
 
 
 def build_corpus(con):

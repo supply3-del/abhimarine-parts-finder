@@ -9,6 +9,7 @@ Run:   python build_db.py
 Re-run any time the source spreadsheets change.
 """
 
+import glob
 import os
 import re
 import sqlite3
@@ -17,9 +18,27 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 DB_PATH = os.path.join(HERE, "parts.db")
+# where new spreadsheets get dropped, alongside the app's own data/ folder
+DROP = os.path.join(os.path.dirname(HERE), "inventory")
 
-INVENTORY_FILE = os.path.join(DATA, "INVENTORY_FILE_30_06_2026.xlsx")
-LOOKUP_FILE = os.path.join(DATA, "Model_Group_code_look-up_sheet.xlsx")
+
+def newest(*patterns: str) -> str:
+    """Newest file matching any pattern, across data/ and the inventory drop
+    folder. The filenames carry their own dates and no fixed convention
+    ('INVENTORY_FILE_30_06_2026.xlsx', '20.07.2026 INVENTORY.xlsx'), so pinning
+    an exact name meant editing this file on every inventory update — and
+    silently rebuilding from a stale sheet when someone forgot."""
+    hits = [f for d in (DROP, DATA) for p in patterns
+            for f in glob.glob(os.path.join(d, p))
+            if not os.path.basename(f).startswith("~$")]   # skip Excel lock files
+    if not hits:
+        raise FileNotFoundError(
+            f"No file matching {patterns} in {DROP} or {DATA}")
+    return max(hits, key=os.path.getmtime)
+
+
+INVENTORY_FILE = newest("*INVENTORY*.xlsx", "*Inventory*.xlsx")
+LOOKUP_FILE = newest("*Model*Group*code*look*up*.xlsx")
 
 # ---------------------------------------------------------------- helpers
 EMPTY = {"", "nan", "none", "?", "na", "n/a", "-"}

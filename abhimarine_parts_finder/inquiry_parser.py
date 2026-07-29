@@ -467,18 +467,37 @@ def parse_text_layout(text: str) -> pd.DataFrame:
 
 
 # ----------------------------------------------------------------- word (.doc / .docx)
+# Main/aux-engine header line, e.g. 'M/E MAK  6M 551AK SN:55346' — the maker and
+# model apply to the whole requisition but sit in the header, not the parts table.
+_ENGINE_HDR_RE = re.compile(
+    r"\b[MA]\s*/\s*E\b\s*[:\-]?\s*(.+?)\s*(?:S\.?/?N|SERIAL|DEPARTMENT|IMO|$)", re.I)
+
+
+def _word_header_equipment(text: str) -> str:
+    """Maker+model descriptor from a ship requisition header — either the labelled
+    form ('Maker:'/'Model:') or the 'M/E <maker> <model> SN:...' engine line. The
+    raw descriptor is returned; annotate_brand_model normalises it to inventory."""
+    lines = [l for l in re.split(r"[\r\n]+", text or "") if l.strip()]
+    b, m = _labelled_equipment(lines)
+    if b or m:
+        return (b + " " + m).strip()
+    hit = _ENGINE_HDR_RE.search(text or "")
+    return re.sub(r"\s+", " ", hit.group(1)).strip() if hit else ""
+
+
 def parse_word(path: str) -> pd.DataFrame:
     """Requires MS Word installed (uses COM automation) — works for legacy .doc and .docx."""
     import pythoncom
     import win32com.client as win32
 
     pythoncom.CoInitialize()
-    frames = []
+    frames, header = [], ""
     word = win32.gencache.EnsureDispatch("Word.Application")
     word.Visible = False
     try:
         doc = word.Documents.Open(path, False, True)
         try:
+            header = _word_header_equipment(doc.Content.Text)
             for tbl in doc.Tables:
                 nrows, ncols = tbl.Rows.Count, tbl.Columns.Count
                 grid = []
@@ -498,7 +517,13 @@ def parse_word(path: str) -> pd.DataFrame:
             doc.Close(False)
     finally:
         word.Quit()
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=CANON_COLS)
+    out = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=CANON_COLS)
+    # the header maker/model belongs to every row that didn't carry its own
+    if header and not out.empty:
+        for col in ("brand", "model"):
+            blank = out[col].fillna("").astype(str).str.strip() == ""
+            out.loc[blank, col] = header
+    return out
 
 
 # ----------------------------------------------------------------- word binary .doc (no Word/COM)

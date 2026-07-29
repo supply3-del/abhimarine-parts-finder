@@ -131,6 +131,13 @@ div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{
 
 /* sidebar */
 [data-testid="stSidebar"] {{ background:var(--surface); border-right:1px solid var(--line); }}
+
+/* matching-inventory expanders: table flush to the box on all four sides, and
+   pulled up tight under the header. Scoped to the right-hand match column
+   (st.container key="matchcol") so the bottom spares-list expander — which also
+   holds a dataframe but needs its padding for the buttons/pills — is untouched. */
+.st-key-matchcol [data-testid="stExpander"] {{ margin-top:-.4rem !important; }}
+.st-key-matchcol [data-testid="stExpanderDetails"] {{ padding:0 !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -243,12 +250,19 @@ def add_confidence_and_qty_match(grid):
         return best_match_preview(r["part_number"], r["description"],
                                   r.get("brand", ""), r.get("model", ""), cust_group)
 
+    def _qty_match(avail, needed):
+        if pd.isna(avail):
+            return ""
+        a = int(avail)
+        if pd.isna(needed):        # freshly added row with no qty typed yet
+            return f"{a}/?"
+        n = int(needed)
+        return f"{a}/{n} {'✅' if a >= n else '⚠️'}"
+
     preview = grid.apply(lambda r: pd.Series(_preview(r), index=["confidence", "_qty_avail"]), axis=1)
     grid["confidence"] = preview["confidence"]
-    grid["qty_match"] = [
-        "" if pd.isna(avail) else f"{int(avail)}/{int(needed)} {'✅' if avail >= needed else '⚠️'}"
-        for avail, needed in zip(preview["_qty_avail"], grid["qty"])
-    ]
+    grid["qty_match"] = [_qty_match(avail, needed)
+                         for avail, needed in zip(preview["_qty_avail"], grid["qty"])]
     return grid
 
 
@@ -607,13 +621,25 @@ with tab_inquiry:
     if idf is None:
         st.info("Upload a file above to extract the customer's part list.")
     else:
-        st.caption(f"Extracted **{len(idf)}** line item(s) — fix any misread cell below "
-                  "(common with photos/scans) before matching.")
-        grid = idf.copy()
-        grid.insert(0, "Match", False)
-        grid = add_confidence_and_qty_match(grid)
+        # Keep the Match ticks inside the stored frame so they survive the rerun
+        # we trigger on every edit. Confidence + qty-match are recomputed each run
+        # so they refresh live once the edited values are persisted below.
+        if "Match" not in idf.columns:
+            idf.insert(0, "Match", False)
+            st.session_state["inquiry_df"] = idf
+        grid = add_confidence_and_qty_match(idf.copy())
+
+        # caption and "Matching inventory" share one header row, so the title
+        # sits on the same line as the left caption and both tables start level
+        h_l, h_r = st.columns([1.4, 1])
+        h_l.caption(f"Extracted **{len(idf)}** line item(s) — fix any misread cell below "
+                    "(common with photos/scans) before matching.")
+        h_r.markdown(f"<div style='font-weight:700;color:{INK};font-size:1.05rem'>"
+                     "Matching inventory</div>", unsafe_allow_html=True)
 
         col_l, col_r = st.columns([1.4, 1])
+        wkey = (f"inquiry_grid_{st.session_state.get('inquiry_file_key', '')}"
+                f"_{st.session_state.get('grid_ver', 0)}")
         with col_l:
             i_edited = st.data_editor(
                 grid,
@@ -635,11 +661,29 @@ with tab_inquiry:
                 hide_index=True,
                 use_container_width=True,
                 height=520,
-                key="inquiry_grid",
+                key=wkey,
             )
 
-        with col_r:
-            st.markdown("#### Matching inventory")
+        # Persist edits/adds/deletes so confidence, qty-match and the right-hand
+        # matches all recompute from the edited values on the next run. Only a
+        # structural change (row added/deleted) bumps grid_ver to reset the
+        # dynamic-row editor — otherwise its delta would re-insert added rows.
+        keep = [c for c in ["Match", "item_no", "description", "part_number",
+                            "qty", "brand", "model"] if c in i_edited.columns]
+        fed = grid[keep].reset_index(drop=True)
+        got = i_edited[keep].reset_index(drop=True)
+        try:
+            got = got.astype(fed.dtypes.to_dict())   # ignore pure dtype drift
+        except Exception:
+            pass
+        if not got.equals(fed):
+            st.session_state["inquiry_df"] = got
+            delta = st.session_state.get(wkey, {})
+            if delta.get("added_rows") or delta.get("deleted_rows"):
+                st.session_state["grid_ver"] = st.session_state.get("grid_ver", 0) + 1
+            st.rerun()
+
+        with col_r, st.container(key="matchcol"):
             checked = i_edited[i_edited["Match"] == True]
             if checked.empty:
                 st.caption("Tick ➕ next to a line on the left to see matches here.")
@@ -657,18 +701,21 @@ with tab_inquiry:
                         else:
                             mgrid = matches.copy()
                             mgrid["available"] = mgrid["available"].astype(bool)
+                            mgrid["photo"] = mgrid["photo"].astype(bool)
                             mgrid.insert(0, "Add", False)
                             m_edited = st.data_editor(
                                 mgrid,
                                 column_order=["Add", "confidence", "match_type", "part_name", "brand",
                                              "model", "condition", "qty", "location", "rack",
-                                             "part_number", "available"],
+                                             "sr", "part_number", "photo", "available"],
                                 column_config={
                                     "Add": st.column_config.CheckboxColumn("➕", width="small"),
                                     "confidence": st.column_config.NumberColumn("Confidence (CL)", format="%.1f"),
                                     "match_type": st.column_config.TextColumn("Match"),
                                     "part_name": st.column_config.TextColumn("Part Name", width="large"),
                                     "qty": st.column_config.NumberColumn("Qty avail", format="%d"),
+                                    "sr": st.column_config.TextColumn("Serial No."),
+                                    "photo": st.column_config.CheckboxColumn("Photo"),
                                     "available": st.column_config.CheckboxColumn("In stock"),
                                 },
                                 disabled=[c for c in mgrid.columns if c != "Add"],
