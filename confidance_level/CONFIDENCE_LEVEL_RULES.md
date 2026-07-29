@@ -47,19 +47,21 @@ never presented as a score.
 | Tier | Conditions (ALL must hold unless noted) |
 |---|---|
 | **CL5** | `brand` exact **AND** `model` exact **AND** `part_number` exact |
-| **CL4** | `part_number` exact-or-stripped-match — **OR** model group code (col F) matches the customer's group **AND** `part_number` substring-or-stripped-match |
-| **CL3** | model/group **AND** `part_number` substring-or-stripped-match **AND** part name |
+| **CL4** | `part_number` substring-or-stripped-match **AND** model group code (col F) matches the customer's group — **OR** an exact/stripped `part_number` when the customer named **no** group |
+| **CL3** | exact/stripped `part_number` in a **different** group than the customer's — **OR** model/group **AND** `part_number` substring-or-stripped-match **AND** part name |
 | **CL2.5** | *Only when customer gave no part number:* model/group **AND** part name |
 | *(none)* | `NaN` — listed last, blank cell |
 
 "model/group" and "part name" above are the `_model_or_group_ok` and
-`_part_name_ok` definitions from the vocabulary section; the CL4 group-code
+`_part_name_ok` definitions from the vocabulary section; the CL4/CL3 group-code
 match is `_group_ok` (inventory col F vs the customer's model group).
 
-The CL4 extra path (added per request) means a looser part-number match earns
-4★ when the inventory row's model group code lines up with the customer's
-engine group — so the same part number in the wrong engine group does **not**
-reach 4★, but in the right group it does even without a part-name match.
+**4★ requires the right engine group.** A part-number match earns 4★ only when
+the inventory row's model group code lines up with the customer's engine group
+(or the customer named no group to check). The **same part number in a
+different engine group scores 3★, not 4★** — right part number, wrong engine.
+Example: customer MAK 551AK (group 551+); part `7.1130-33` in group 551+ → 4★,
+the identical part number in group 453+ → 3★.
 
 ## Output-field guidance (separate from confidence logic)
 
